@@ -24,7 +24,7 @@ def process_image(upload):
     blurred = cv2.medianBlur(s-channel, 5)
     -,output = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     output = np.max(np.array(output))-np.array(output)
-   
+    col14.image(output)
 
 col1, col2, col3, col4 = st.columns(4)
 my_upload = st.sidebar.file_uploader("Upload", type=["png","jpg","jpeg"])
