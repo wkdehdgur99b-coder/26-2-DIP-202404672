@@ -17,9 +17,14 @@ def process_image(upload):
     output = ImageOps.equalize(output)
     col3.write("Output 2: histeq")
     col3.image(output)
-    col4.write("Output 3: your own processing")
+    col4.write("Output 3:"saturation")
+    img_array = np.array(image)
+    hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
+    s_channel = hsv[:, :, 1]
+    blurred = cv2.medianBlur(s-channel, 5)
+    -,output = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     output = np.max(np.array(output))-np.array(output)
-    col4.image(output)
+   
 
 col1, col2, col3, col4 = st.columns(4)
 my_upload = st.sidebar.file_uploader("Upload", type=["png","jpg","jpeg"])
