@@ -35,3 +35,7 @@ if my_upload is not None:
     process_image(upload=my_upload)
 else:
     st.info("왼쪽 사이드바에서 이미지를 업로드해 주세요.")
+if my_upload is not None:
+    process_image(upload=my_upload)
+else:
+    process_image("./gr.jpeg")
