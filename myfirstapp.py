@@ -1,6 +1,7 @@
 import streamlit as st
 from PIL import Image, ImageOps
 import numpy as np
+import scipy.ndimage as nd
 
 
 st.set_page_config(layout="wide", page_title="MY DIP")
