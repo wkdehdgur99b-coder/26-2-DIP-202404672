@@ -38,22 +38,21 @@ import matplotlib.pyplot as plt
 if my_upload is not None:
     st.divider()
     
-    # 1. 업로드된 이미지 불러오기 및 그레이스케일 변환
+    # 1. 이미지 로드 및 그레이스케일 변환 + 가우시안 블러(질감/노이즈 억제)
     img = Image.open(my_upload)
-    f = np.array(img.convert('L'))
+    f_raw = np.array(img.convert('L'), dtype=np.float32)
+    f = nd.gaussian_filter(f_raw, sigma=2.0)
     h, w = f.shape
+    total = h * w
 
-    # 2. Top-hat 변환 (불균일한 배경 조명 보정)
-    radius = max(10, int(min(h, w) * 0.05))
-    y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
-    se_disk = x**2 + y**2 <= radius**2
+    # 2. 배경 밝기 자동 판별 (테두리 픽셀 평균이 밝으면 흰 배경+어두운 객체로 판단하여 반전)
+    border_pixels = np.concatenate([f[0, :], f[-1, :], f[:, 0], f[:, -1]])
+    if np.mean(border_pixels) > 127:
+        f = 255.0 - f
 
-    background = nd.grey_opening(f, footprint=se_disk)
-    f_tophat = np.clip(f.astype(np.float32) - background.astype(np.float32), 0, 255).astype(np.uint8)
-
-    # 3. Otsu 이진화
-    hist, _ = np.histogram(f_tophat.ravel(), bins=256, range=(0, 256))
-    total = f_tophat.size
+    # 3. Otsu 이진화 (전체 밝기 기반)
+    f_uint8 = np.clip(f, 0, 255).astype(np.uint8)
+    hist, _ = np.histogram(f_uint8.ravel(), bins=256, range=(0, 256))
     current_max, threshold = 0, 0
     sum_total, sum_b, weight_b = np.dot(np.arange(256), hist), 0, 0
 
@@ -72,16 +71,18 @@ if my_upload is not None:
             current_max = var_between
             threshold = i
 
-    binary_img = f_tophat > threshold
+    binary_img = f_uint8 > threshold
 
-    # 4. 형태학적 노이즈 제거
-    se_3x3 = np.ones((3, 3), dtype=bool)
-    binary_clean = nd.binary_opening(binary_img, structure=se_3x3)
-    binary_clean = nd.binary_closing(binary_clean, structure=se_3x3)
+    # 4. 객체 내부 구멍 메우기 & 강한 형태학적 정리 (객체가 쪼개지는 현상 방지)
+    binary_filled = nd.binary_fill_holes(binary_img)
+    se_size = max(5, int(min(h, w) * 0.015))
+    se_disk = np.ones((se_size, se_size), dtype=bool)
+    binary_clean = nd.binary_opening(binary_filled, structure=se_disk)
+    binary_clean = nd.binary_closing(binary_clean, structure=se_disk)
 
-    # 5. 객체 라벨링 및 개수 세기
+    # 5. 라벨링 및 의미 있는 크기의 객체만 필터링 (전체 면적의 0.3% 미만 노이즈 제거)
     labeled_array, num_features = nd.label(binary_clean, structure=np.ones((3, 3), dtype=int))
-    min_pixels = max(10, int(total * 0.0002))
+    min_pixels = int(total * 0.003)
     sizes = nd.sum(binary_clean, labeled_array, range(1, num_features + 1))
     valid_labels = np.where(sizes >= min_pixels)[0] + 1
 
@@ -91,7 +92,7 @@ if my_upload is not None:
 
     object_count = len(valid_labels)
 
-    # 6. 최종 결과만 화면 하단에 출력
+    # 6. 최종 결과만 출력
     st.subheader("객체 검출 최종 결과")
     st.metric(label="검출된 총 객체 수", value=f"{object_count} 개")
 
