@@ -34,3 +34,25 @@ if my_upload is not None:
     process_image(upload=my_upload)
 else:
     process_image("./IMG_9642.PNG")
+
+f = Image.open('myimg.jpg').convert('L')
+f = np.array(f)
+plt.imshow(f,cmap='gray')
+plt.axis('off')
+plt.show()
+
+A = f<64
+plt.imshow(A,cmap='gray')
+plt.axis('off')
+plt.show()
+
+A_e = nd.binary_opening(A,np.ones((9,9)))
+plt.imshow(A_e,cmap='gray')
+plt.axis('off')
+plt.show()
+
+l, m = nd.label(A_e)
+plt.imshow(l,interpolation='nearest',cmap='tab20c')
+plt.axis('off')
+plt.show()
+print(f'  {m}개가 맞나요?')
