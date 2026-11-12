@@ -38,14 +38,7 @@ import scipy.ndimage as nd
 from PIL import Image
 import matplotlib.pyplot as plt
 
-# 1. 웹페이지 기본 설정
-st.set_page_config(
-    page_title="DIP Object Counter",
-    page_icon="🔍",
-    layout="centered"
-)
-
-# 2. 영상 처리 및 객체 검출 핵심 함수
+# 1. 영상 처리 및 객체 검출 핵심 함수
 def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=0.0002):
     f = np.array(pil_image.convert('L'))
     h, w = f.shape
@@ -105,43 +98,12 @@ def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=
 
     return len(valid_labels), filtered_label
 
-# --- 3. 사이드바 UI (입력 및 설정) ---
-with st.sidebar:
-    st.header("📁 이미지 입력")
-    uploaded_file = st.file_uploader(
-        "이미지를 입력해주세요",
-        type=["tif", "tiff", "png", "jpg", "jpeg"],
-        key="main_uploader"
-    )
-
-    st.divider()
-    st.header("⚙️ 검출 옵션 설정")
-    brightness_option = st.radio(
-        "객체와 배경의 밝기 관계",
-        options=["bright", "dark"],
-        format_func=lambda x: "어두운 배경 + 밝은 객체" if x == "bright" else "밝은 배경 + 어두운 객체"
-    )
-    sensitivity = st.slider(
-        "노이즈 제거 민감도",
-        min_value=0.0001,
-        max_value=0.0020,
-        value=0.0002,
-        step=0.0001,
-        format="%.4f"
-    )
-
-# --- 4. 메인 화면 UI (결과만 출력) ---
-st.title("🔍 객체 검출 결과")
-
+# --- 2. 메인 화면 UI (결과만 출력) ---
+# 기존 코드에서 이미 이미지가 로드되어 있는 변수(예: uploaded_file 또는 img)를 아래에 연결하세요.
 if uploaded_file is not None:
     input_image = Image.open(uploaded_file)
 
-    with st.spinner("분석 중..."):
-        object_count, result_label = detect_and_count_objects(
-            input_image,
-            obj_brightness=brightness_option,
-            min_area_ratio=sensitivity
-        )
+    object_count, result_label = detect_and_count_objects(input_image)
 
     st.metric(label="검출된 총 객체 수", value=f"{object_count} 개")
 
