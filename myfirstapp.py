@@ -28,8 +28,4 @@ if my_upload is not None:
     process_image(upload=my_upload)
 else:
     process_image("./gr.jpeg")
-plt.hist(f_denoised.ravel(), bins=256, range=(0,256), color='gray')
-plt.xlabel('pixel intensity')
-plt.ylabel('Frequency')
-plt.gird(True, linestlye='--',alpha=0.5)
-plt.show()
+
