@@ -17,7 +17,7 @@ def process_image(upload):
     output = ImageOps.equalize(output)
     col3.write("Output 2: histeq")
     col3.image(output)
-    col4.write("Output 3:"saturation")
+    col4.write("Output 3:saturation")
     img_array = np.array(image)
     hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
     s_channel = hsv[:, :, 1]
