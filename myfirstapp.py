@@ -32,31 +32,26 @@ if my_upload is not None:
 else:
     st.info("왼쪽 사이드 바에서 이미지 파일을 입력해주세요.")
 
-import streamlit as st
-import numpy as np
 import scipy.ndimage as nd
-from PIL import Image
 import matplotlib.pyplot as plt
 
-# 1. 영상 처리 및 객체 검출 핵심 함수
-def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=0.0002):
-    f = np.array(pil_image.convert('L'))
+if my_upload is not None:
+    st.divider()
+    
+    # 1. 업로드된 이미지 불러오기 및 그레이스케일 변환
+    img = Image.open(my_upload)
+    f = np.array(img.convert('L'))
     h, w = f.shape
 
-    if obj_brightness == "dark":
-        f_proc = 255 - f
-    else:
-        f_proc = f.copy()
-
-    # 불균일 조명 보정 (Top-hat 변환)
+    # 2. Top-hat 변환 (불균일한 배경 조명 보정)
     radius = max(10, int(min(h, w) * 0.05))
     y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
     se_disk = x**2 + y**2 <= radius**2
 
-    background = nd.grey_opening(f_proc, footprint=se_disk)
-    f_tophat = np.clip(f_proc.astype(np.float32) - background.astype(np.float32), 0, 255).astype(np.uint8)
+    background = nd.grey_opening(f, footprint=se_disk)
+    f_tophat = np.clip(f.astype(np.float32) - background.astype(np.float32), 0, 255).astype(np.uint8)
 
-    # Otsu 이진화
+    # 3. Otsu 이진화
     hist, _ = np.histogram(f_tophat.ravel(), bins=256, range=(0, 256))
     total = f_tophat.size
     current_max, threshold = 0, 0
@@ -79,16 +74,14 @@ def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=
 
     binary_img = f_tophat > threshold
 
-    # 형태학적 노이즈 제거
+    # 4. 형태학적 노이즈 제거
     se_3x3 = np.ones((3, 3), dtype=bool)
     binary_clean = nd.binary_opening(binary_img, structure=se_3x3)
     binary_clean = nd.binary_closing(binary_clean, structure=se_3x3)
 
-    # Connected Component Labeling (8-연결성)
+    # 5. 객체 라벨링 및 개수 세기
     labeled_array, num_features = nd.label(binary_clean, structure=np.ones((3, 3), dtype=int))
-
-    # 작은 노이즈 필터링
-    min_pixels = max(10, int(total * min_area_ratio))
+    min_pixels = max(10, int(total * 0.0002))
     sizes = nd.sum(binary_clean, labeled_array, range(1, num_features + 1))
     valid_labels = np.where(sizes >= min_pixels)[0] + 1
 
@@ -96,30 +89,18 @@ def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=
     for new_idx, old_idx in enumerate(valid_labels, start=1):
         filtered_label[labeled_array == old_idx] = new_idx
 
-    return len(valid_labels), filtered_label
+    object_count = len(valid_labels)
 
-# --- 2. 메인 화면 UI (결과만 출력) ---
-# 기존 코드에서 이미 이미지가 로드되어 있는 변수(예: uploaded_file 또는 img)를 아래에 연결하세요.
-if uploaded_file is not None:
-    input_image = Image.open(uploaded_file)
-
-    object_count, result_label = detect_and_count_objects(input_image)
-
+    # 6. 최종 결과만 화면 하단에 출력
+    st.subheader("객체 검출 최종 결과")
     st.metric(label="검출된 총 객체 수", value=f"{object_count} 개")
 
-    col1, col2 = st.columns(2)
+    fig, ax = plt.subplots(figsize=(5, 5))
+    cmap = plt.cm.nipy_spectral.copy()
+    cmap.set_under('black')
+    ax.imshow(filtered_label, cmap=cmap, vmin=0.5)
+    ax.axis('off')
+    plt.tight_layout(pad=0)
+    st.pyplot(fig)
+    plt.close(fig)
 
-    with col1:
-        st.subheader("원본 이미지")
-        st.image(input_image, use_container_width=True)
-
-    with col2:
-        st.subheader("검출 결과")
-        fig, ax = plt.subplots(figsize=(5, 5))
-        cmap = plt.cm.nipy_spectral.copy()
-        cmap.set_under('black')
-        ax.imshow(result_label, cmap=cmap, vmin=0.5)
-        ax.axis('off')
-        plt.tight_layout(pad=0)
-        st.pyplot(fig)
-        plt.close(fig)
