@@ -38,70 +38,41 @@ import matplotlib.pyplot as plt
 if my_upload is not None:
     st.divider()
     
-    # 1. 이미지 로드 및 그레이스케일 변환 + 가우시안 블러(질감/노이즈 억제)
-    img = Image.open(my_upload)
-    f_raw = np.array(img.convert('L'), dtype=np.float32)
-    f = nd.gaussian_filter(f_raw, sigma=2.0)
-    h, w = f.shape
-    total = h * w
-
-    # 2. 배경 밝기 자동 판별 (테두리 픽셀 평균이 밝으면 흰 배경+어두운 객체로 판단하여 반전)
-    border_pixels = np.concatenate([f[0, :], f[-1, :], f[:, 0], f[:, -1]])
-    if np.mean(border_pixels) > 127:
-        f = 255.0 - f
-
-    # 3. Otsu 이진화 (전체 밝기 기반)
-    f_uint8 = np.clip(f, 0, 255).astype(np.uint8)
-    hist, _ = np.histogram(f_uint8.ravel(), bins=256, range=(0, 256))
-    current_max, threshold = 0, 0
-    sum_total, sum_b, weight_b = np.dot(np.arange(256), hist), 0, 0
-
-    for i in range(256):
-        weight_b += hist[i]
-        if weight_b == 0:
-            continue
-        weight_f = total - weight_b
-        if weight_f == 0:
-            break
-        sum_b += i * hist[i]
-        mean_b = sum_b / weight_b
-        mean_f = (sum_total - sum_b) / weight_f
-        var_between = weight_b * weight_f * (mean_b - mean_f) ** 2
-        if var_between > current_max:
-            current_max = var_between
-            threshold = i
-
-    binary_img = f_uint8 > threshold
-
-    # 4. 객체 내부 구멍 메우기 & 강한 형태학적 정리 (객체가 쪼개지는 현상 방지)
+    # 1. 교수님 코드의 핵심인 HSV 채도(Saturation) 채널로 전경(모든 색상의 레고) 추출
+    img = Image.open(my_upload).convert("RGB")
+    hsv_image = img.convert("HSV")
+    s_channel = np.array(hsv_image)[:, :, 1]
+    
+    # 채도가 높은 객체 영역 분리 + 구멍 메우기 + 노이즈 제거
+    binary_img = s_channel > 50
     binary_filled = nd.binary_fill_holes(binary_img)
-    se_size = max(5, int(min(h, w) * 0.015))
-    se_disk = np.ones((se_size, se_size), dtype=bool)
-    binary_clean = nd.binary_opening(binary_filled, structure=se_disk)
-    binary_clean = nd.binary_closing(binary_clean, structure=se_disk)
+    se_3x3 = np.ones((3, 3), dtype=bool)
+    binary_clean = nd.binary_opening(binary_filled, structure=se_3x3)
+    binary_clean = nd.binary_closing(binary_clean, structure=se_3x3)
 
-    # 5. 라벨링 및 의미 있는 크기의 객체만 필터링 (전체 면적의 0.3% 미만 노이즈 제거)
-    labeled_array, num_features = nd.label(binary_clean, structure=np.ones((3, 3), dtype=int))
-    min_pixels = int(total * 0.003)
-    sizes = nd.sum(binary_clean, labeled_array, range(1, num_features + 1))
-    valid_labels = np.where(sizes >= min_pixels)[0] + 1
+    # 2. 거리 변환(Distance Transform)으로 붙어 있는 레고들의 중심점(Seed) 분리
+    dist_transform = nd.distance_transform_edt(binary_clean)
+    # 블록 크기에 비례한 탐색 반경 설정
+    local_max_size = max(15, int(min(binary_clean.shape) * 0.045))
+    local_maxi = (dist_transform == nd.maximum_filter(dist_transform, size=local_max_size)) & (dist_transform > local_max_size * 0.35)
+    
+    # 3. 분리된 중심점 마커 라벨링 후 Watershed 방식으로 각 영역 분할
+    markers, object_count = nd.label(local_maxi)
+    # 각 전경 픽셀을 가장 가까운 마커(레고 중심)에 할당하여 시각적으로도 깔끔하게 분리
+    _, nearest_idx = nd.distance_transform_edt(markers == 0, return_indices=True)
+    segmented_label = markers[tuple(nearest_idx)] * binary_clean
 
-    filtered_label = np.zeros_like(labeled_array)
-    for new_idx, old_idx in enumerate(valid_labels, start=1):
-        filtered_label[labeled_array == old_idx] = new_idx
-
-    object_count = len(valid_labels)
-
-    # 6. 최종 결과만 출력
+    # 4. 최종 결과만 출력
     st.subheader("객체 검출 최종 결과")
     st.metric(label="검출된 총 객체 수", value=f"{object_count} 개")
 
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(6, 4))
     cmap = plt.cm.nipy_spectral.copy()
     cmap.set_under('black')
-    ax.imshow(filtered_label, cmap=cmap, vmin=0.5)
+    ax.imshow(segmented_label, cmap=cmap, vmin=0.5)
     ax.axis('off')
     plt.tight_layout(pad=0)
     st.pyplot(fig)
     plt.close(fig)
+   
 
