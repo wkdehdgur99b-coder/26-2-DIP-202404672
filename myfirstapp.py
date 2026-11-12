@@ -30,5 +30,4 @@ my_upload = st.sidebar.file_uploader("Upload", type=["png","jpg","jpeg"])
 if my_upload is not None:
     process_image(upload=my_upload)
 else:
-    process_image("./gr.jpeg")
-
+    st.info("왼쪽 사이드 바에서 이미지 파일을 입력해주세요.")
