@@ -30,10 +30,15 @@ def process_image(upload):
 col1, col2, col3, col4 = st.columns(4)
 my_upload = st.sidebar.file_uploader("Upload", type=["png","jpg","jpeg"])
 
-if my_upload is not None:
-    process_image(upload=my_upload)
-else:
-    process_image("")
+import streamlit as st
+from PIL import Image
+
+uploaded_file = st.file_uploader("이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    # 업로드된 파일을 바로 열어서 흑백으로 변환
+    f = Image.open(uploaded_file).convert('L')
+    st.image(f, caption="흑백 변환 이미지")
 
 f = Image.open('myimg.jpg').convert('L')
 f = np.array(f)
