@@ -3,7 +3,7 @@ from PIL import Image, ImageOps
 import numpy as np
 
 st.set_page_config(layout="wide", page_title="MY DIP")
-st.write("## Homework 2 홍길동")
+st.write("## Homework 5 장동혁")
 st.write(":dog:")
 st.sidebar.write("## my sidebar")
 
