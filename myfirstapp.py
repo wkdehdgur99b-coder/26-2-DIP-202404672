@@ -105,6 +105,14 @@ def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=
 
     return len(valid_labels), filtered_label
 
+# --- 3. 사이드바 UI (입력 및 설정) ---
+with st.sidebar:
+    st.header("📁 이미지 입력")
+    uploaded_file = st.file_uploader(
+        "이미지를 입력해주세요",
+        type=["tif", "tiff", "png", "jpg", "jpeg"],
+        key="main_uploader"
+    )
 
     st.divider()
     st.header("⚙️ 검출 옵션 설정")
@@ -135,10 +143,8 @@ if uploaded_file is not None:
             min_area_ratio=sensitivity
         )
 
-    # 최종 개수 표시
     st.metric(label="검출된 총 객체 수", value=f"{object_count} 개")
 
-    # 원본과 결과 이미지 나란히 출력
     col1, col2 = st.columns(2)
 
     with col1:
@@ -155,4 +161,3 @@ if uploaded_file is not None:
         plt.tight_layout(pad=0)
         st.pyplot(fig)
         plt.close(fig)
-    st.info("👆 위 버튼을 눌러 `rice.tif` 또는 테스트할 이미지를 업로드해 주세요.")
