@@ -35,6 +35,7 @@ else:
 labels, nums = nd.label(f_mask)
 plt.imshow(labels, cmap='Spectral_r')
 plt.axis('off')
+st.pyplot(plt.gcf())
 
 cc = np.zeros((nums, 2))
 for i in range(1, nums + 1):
