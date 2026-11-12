@@ -22,7 +22,7 @@ def process_image(upload):
     hsv_image = image.convert("HSV")
     s_channel = np.array(hsv_image)[:, :, 1]
     output = np.where(s_channel > 50, 255, 0).astype(np.uint8)
-    col14.image(output)
+    col4.image(output)
 
 col1, col2, col3, col4 = st.columns(4)
 my_upload = st.sidebar.file_uploader("Upload", type=["png","jpg","jpeg"])
