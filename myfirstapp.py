@@ -32,54 +32,57 @@ if my_upload is not None:
 else:
     st.info("왼쪽 사이드 바에서 이미지 파일을 입력해주세요.")
 
+# ==========================================
+# 2. 배경 불균일 보정 (Background Correction)
+# ==========================================
+background = nd.grey_opening(img, size=(15, 15))
+img_corrected = img - background
 
-import scipy.ndimage as nd
-import matplotlib.pyplot as plt
+# ==========================================
+# 3. 이진화 (Thresholding)
+# ==========================================
+threshold = 50
+binary = img_corrected > threshold
 
-if my_upload is not None:
-    st.divider()
-    
-    # 1. HSV 채도(Saturation) 채널로 모든 색상의 레고 추출
-    img = Image.open(my_upload).convert("RGB")
-    hsv_image = img.convert("HSV")
-    s_channel = np.array(hsv_image)[:, :, 1]
-    
-    binary_img = s_channel > 50
-    binary_filled = nd.binary_fill_holes(binary_img)
-    se_5x5 = np.ones((5, 5), dtype=bool)
-    binary_clean = nd.binary_opening(binary_filled, structure=se_5x5)
-    binary_clean = nd.binary_closing(binary_clean, structure=se_5x5)
+# ==========================================
+# 4. 노이즈 제거 (Morphological Filtering)
+# ==========================================
+cleaned = nd.binary_opening(binary, structure=np.ones((3, 3)))
 
-    # 2. 거리 변환 후 가우시안 스무딩으로 레고 돌기(스터드) 노이즈 제거
-    dist_transform = nd.distance_transform_edt(binary_clean)
-    dist_smooth = nd.gaussian_filter(dist_transform, sigma=3.0)
+# ==========================================
+# 5. 객체 라벨링 및 개수 세기 (Object Counting)
+# ==========================================
+labeled_array, num_objects = nd.label(cleaned)
+print(f"검출된 총 객체(쌀알) 개수: {num_objects}개")
 
-    # 블록 반지름 크기에 맞춘 지역 최댓값(중심점) 탐색
-    local_max_size = max(17, int(min(binary_clean.shape) * 0.05))
-    local_maxi = (dist_smooth == nd.maximum_filter(dist_smooth, size=local_max_size)) & (dist_smooth > local_max_size * 0.35)
-    
-    # 아주 가까이 붙은 중복 중심점 하나로 병합
-    local_maxi = nd.binary_dilation(local_maxi, structure=np.ones((5, 5), dtype=bool))
-    markers, object_count = nd.label(local_maxi)
+# ==========================================
+# 6. 전체 과정 시각화 (Visualization)
+# ==========================================
+fig, axes = plt.subplots(2, 3, figsize=(15, 9))
+plt.subplots_adjust(wspace=0.2, hspace=0.3)
 
-    # 3. 각 레고 영역을 가장 가까운 중심점 기준으로 깔끔하게 분할
-    _, nearest_idx = nd.distance_transform_edt(markers == 0, return_indices=True)
-    segmented_label = markers[tuple(nearest_idx)] * binary_clean
+axes[0, 0].imshow(img, cmap='gray')
+axes[0, 0].set_title('1. Original Image')
+axes[0, 0].axis('off')
 
-    # 4. 각 객체마다 뚜렷하게 구분되는 랜덤 색상 입히기
-    np.random.seed(42)
-    colors = np.random.randint(60, 255, size=(object_count + 1, 3), dtype=np.uint8)
-    colors[0] = [0, 0, 0] # 배경은 검은색
-    colored_result = colors[segmented_label]
+axes[0, 1].imshow(background, cmap='gray')
+axes[0, 1].set_title('2. Estimated Background')
+axes[0, 1].axis('off')
 
-    # 5. 최종 결과 출력
-    st.subheader("객체 검출 최종 결과")
-    st.metric(label="검출된 총 객체 수", value=f"{object_count} 개")
+axes[0, 2].imshow(img_corrected, cmap='gray')
+axes[0, 2].set_title('3. Background Subtracted')
+axes[0, 2].axis('off')
 
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.imshow(colored_result)
-    ax.axis('off')
-    plt.tight_layout(pad=0)
-    st.pyplot(fig)
-    plt.close(fig)
+axes[1, 0].imshow(binary, cmap='gray')
+axes[1, 0].set_title(f'4. Thresholding (> {threshold})')
+axes[1, 0].axis('off')
 
+axes[1, 1].imshow(cleaned, cmap='gray')
+axes[1, 1].set_title('5. Morphological Opening')
+axes[1, 1].axis('off')
+
+axes[1, 2].imshow(labeled_array, cmap='nipy_spectral')
+axes[1, 2].set_title(f'6. Labeled Objects (Count: {num_objects})')
+axes[1, 2].axis('off')
+
+plt.show()
