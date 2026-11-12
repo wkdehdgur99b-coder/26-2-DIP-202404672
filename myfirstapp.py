@@ -112,3 +112,74 @@ if my_upload is not None:
     process_image(upload=my_upload)
 else:
     st.info("왼쪽 사이드 바에서 이미지 파일을 입력해주세요.")
+
+
+if my_upload is not None:
+    my_upload.seek(0)
+    _img = Image.open(my_upload).convert("RGB")
+    if brightness != 1.0:
+        _img = ImageEnhance.Brightness(_img).enhance(brightness)
+    if contrast != 1.0:
+        _img = ImageEnhance.Contrast(_img).enhance(contrast)
+
+    _arr = np.array(_img, dtype=np.float64)
+    if noise_level > 0:
+        _arr = np.clip(_arr + np.random.default_rng(42).normal(0, noise_level, _arr.shape), 0, 255)
+    if blur_sigma > 0:
+        _arr = nd.gaussian_filter(_arr, sigma=(blur_sigma, blur_sigma, 0))
+
+    _proc = Image.fromarray(_arr.astype(np.uint8))
+    _lum = float(np.mean(np.array(_proc.convert("L"))))
+    _s = np.array(_proc.convert("HSV"))[:, :, 1]
+    _mask = _s > sat_thresh
+    if morph_size > 1:
+        _mask = nd.binary_opening(_mask, structure=np.ones((morph_size, morph_size)))
+    _, _nums = nd.label(_mask)
+
+    # 추천 감도 계산 (Otsu 자동 채도 기준, 적정 밝기, 노이즈 보정치)
+    _hist, _ = np.histogram(_s.ravel(), bins=256, range=(0, 256))
+    _tot = _s.size
+    _sum_t = float(np.dot(np.arange(256), _hist))
+    _sum_b, _w_b, _max_v, _rec_sat = 0.0, 0, 0.0, 50
+    for _t in range(256):
+        _w_b += int(_hist[_t])
+        if _w_b == 0:
+            continue
+        _w_f = _tot - _w_b
+        if _w_f == 0:
+            break
+        _sum_b += _t * int(_hist[_t])
+        _v = _w_b * _w_f * ((_sum_b / _w_b) - ((_sum_t - _sum_b) / _w_f)) ** 2
+        if _v > _max_v:
+            _max_v, _rec_sat = _v, _t
+
+    _rec_bright = brightness if 105 <= _lum <= 155 else float(np.clip(round(brightness * (130.0 / max(_lum, 15.0)), 1), 0.2, 2.0))
+    _rec_blur = round(min(5.0, max(0.5, noise_level / 15.0)) * 2) / 2 if noise_level > 0 else 0.0
+    _rec_morph = 5 if noise_level >= 25 else (3 if noise_level > 0 else 1)
+
+    st.divider()
+    st.write("### 결과 피드백 & 추천 감도")
+    st.info(
+        f"**추천 감도** — 밝기: `{_rec_bright:.1f}` | 블러: `{_rec_blur:.1f}` | "
+        f"채도 임계값: `{_rec_sat}` | 모폴로지 커널: `{_rec_morph}`"
+    )
+
+    tips = []
+    if _lum < 85:
+        tips.append(f"영상이 어둡습니다. 밝기를 **{_rec_bright:.1f}** 정도로 높여보세요.")
+    elif _lum > 185:
+        tips.append(f"영상이 너무 밝아 색이 날아갔습니다. 밝기를 **{_rec_bright:.1f}** 정도로 낮춰보세요.")
+
+    if _nums == 0 or np.mean(_mask) < 0.005:
+        tips.append(f"채도 임계값({sat_thresh})이 너무 높아 객체가 안 잡힙니다. **{_rec_sat}** 부근으로 낮춰보세요.")
+    elif np.mean(_mask) > 0.65:
+        tips.append(f"채도 임계값({sat_thresh})이 낮아 배경까지 잡힙니다. **{_rec_sat}** 부근으로 높여보세요.")
+
+    if noise_level > 0 and blur_sigma == 0 and morph_size == 1:
+        tips.append(f"노이즈가 있습니다. 블러(**{_rec_blur:.1f}**)나 모폴로지 커널(**{_rec_morph}**)을 적용해 보세요.")
+
+    if not tips:
+        tips.append("현재 밝기, 채도, 노이즈 설정이 균형 있게 잘 잡혀 있습니다.")
+
+    for tip in tips:
+        st.write(f"- {tip}")
