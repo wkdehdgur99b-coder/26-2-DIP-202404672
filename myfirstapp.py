@@ -113,7 +113,9 @@ if my_upload is not None:
 else:
     st.info("왼쪽 사이드 바에서 이미지 파일을 입력해주세요.")
 
-
+# ==========================================
+# 4. 고도화된 DIP 결과 피드백 및 추천 감도 (맨 아래 추가)
+# ==========================================
 if my_upload is not None:
     my_upload.seek(0)
     _img = Image.open(my_upload).convert("RGB")
@@ -129,18 +131,31 @@ if my_upload is not None:
         _arr = nd.gaussian_filter(_arr, sigma=(blur_sigma, blur_sigma, 0))
 
     _proc = Image.fromarray(_arr.astype(np.uint8))
-    _lum = float(np.mean(np.array(_proc.convert("L"))))
+    _lum_arr = np.array(_proc.convert("L"), dtype=np.float64)
     _s = np.array(_proc.convert("HSV"))[:, :, 1]
+
     _mask = _s > sat_thresh
     if morph_size > 1:
         _mask = nd.binary_opening(_mask, structure=np.ones((morph_size, morph_size)))
-    _, _nums = nd.label(_mask)
 
-    # 추천 감도 계산 (Otsu 자동 채도 기준, 적정 밝기, 노이즈 보정치)
+    _labels, _raw_nums = nd.label(_mask)
+    _areas = np.array([np.sum(_labels == i) for i in range(1, _raw_nums + 1)]) if _raw_nums > 0 else np.array([])
+
+    # 메인 화면과 동일하게 Min Object Size 필터링 동기화
+    if min_area > 1 and _raw_nums > 0:
+        _valid = np.where(_areas >= min_area)[0] + 1
+        _final_mask = np.isin(_labels, _valid)
+        _labels, _nums = nd.label(_final_mask)
+        _areas = np.array([np.sum(_labels == i) for i in range(1, _nums + 1)]) if _nums > 0 else np.array([])
+    else:
+        _final_mask = _mask
+        _nums = _raw_nums
+
+    # 1) Otsu + 배경 노이즈 바닥값을 결합한 추천 채도 임계값
     _hist, _ = np.histogram(_s.ravel(), bins=256, range=(0, 256))
     _tot = _s.size
     _sum_t = float(np.dot(np.arange(256), _hist))
-    _sum_b, _w_b, _max_v, _rec_sat = 0.0, 0, 0.0, 50
+    _sum_b, _w_b, _max_v, _otsu = 0.0, 0, 0.0, 50
     for _t in range(256):
         _w_b += int(_hist[_t])
         if _w_b == 0:
@@ -151,35 +166,71 @@ if my_upload is not None:
         _sum_b += _t * int(_hist[_t])
         _v = _w_b * _w_f * ((_sum_b / _w_b) - ((_sum_t - _sum_b) / _w_f)) ** 2
         if _v > _max_v:
-            _max_v, _rec_sat = _v, _t
+            _max_v, _otsu = _v, _t
 
-    _rec_bright = brightness if 105 <= _lum <= 155 else float(np.clip(round(brightness * (130.0 / max(_lum, 15.0)), 1), 0.2, 2.0))
+    _bg_s = _s[~_final_mask] if np.any(~_final_mask) else _s
+    _noise_floor = int(np.percentile(_bg_s, 95)) + 12 if _bg_s.size > 0 else 40
+    _rec_sat = int(np.clip(max(_otsu, _noise_floor), 20, 220))
+
+    # 2) 전경(객체)과 배경 분리 분석 (흰 배경 오진 방지)
+    _fg_lum = float(np.mean(_lum_arr[_final_mask])) if np.any(_final_mask) else float(np.mean(_lum_arr))
+    _fg_sat = float(np.mean(_s[_final_mask])) if np.any(_final_mask) else 0.0
+    _bg_sat = float(np.mean(_s[~_final_mask])) if np.any(~_final_mask) else 0.0
+    _sat_gap = _fg_sat - _bg_sat
+
+    _rec_bright = brightness
+    if _fg_lum < 65:
+        _rec_bright = float(np.clip(round(brightness + 0.3, 1), 0.2, 2.0))
+    elif _fg_lum > 225 and _fg_sat < 60:
+        _rec_bright = float(np.clip(round(brightness - 0.3, 1), 0.2, 2.0))
+
     _rec_blur = round(min(5.0, max(0.5, noise_level / 15.0)) * 2) / 2 if noise_level > 0 else 0.0
     _rec_morph = 5 if noise_level >= 25 else (3 if noise_level > 0 else 1)
+    _noise_dots = int(np.sum(_areas < 35)) if _areas.size > 0 else 0
+    _rec_min_area = 51 if (_noise_dots >= 3 or noise_level > 0) else 1
+
+    # 3) 객체 형태 품질 분석 (뭉침 현상 & 내부 구멍)
+    _filled = nd.binary_fill_holes(_final_mask)
+    _hole_ratio = float(np.sum(_filled) - np.sum(_final_mask)) / max(float(np.sum(_filled)), 1.0)
+    _merged_cnt = int(np.sum(_areas > np.median(_areas) * 3.2)) if _areas.size >= 3 else 0
 
     st.divider()
-    st.write("### 결과 피드백 & 추천 감도")
-    st.info(
-        f"**추천 감도** — 밝기: `{_rec_bright:.1f}` | 블러: `{_rec_blur:.1f}` | "
-        f"채도 임계값: `{_rec_sat}` | 모폴로지 커널: `{_rec_morph}`"
-    )
+    st.write("### 4. DIP 영상 분석 피드백 & 추천 감도")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("전경-배경 채도 분리도", f"{_sat_gap:.1f}", "분리 뚜렷함" if _sat_gap >= 70 else "분리 약함")
+    c2.metric("추천 채도 임계값", f"{_rec_sat}", f"{_rec_sat - sat_thresh:+d}")
+    c3.metric("추천 블러 / 모폴로지", f"{_rec_blur:.1f} / {_rec_morph}", f"현재 {blur_sigma:.1f} / {morph_size}")
+    c4.metric("추천 최소 객체 크기", f"{_rec_min_area}", f"{_rec_min_area - min_area:+d}")
 
     tips = []
-    if _lum < 85:
-        tips.append(f"영상이 어둡습니다. 밝기를 **{_rec_bright:.1f}** 정도로 높여보세요.")
-    elif _lum > 185:
-        tips.append(f"영상이 너무 밝아 색이 날아갔습니다. 밝기를 **{_rec_bright:.1f}** 정도로 낮춰보세요.")
 
-    if _nums == 0 or np.mean(_mask) < 0.005:
-        tips.append(f"채도 임계값({sat_thresh})이 너무 높아 객체가 안 잡힙니다. **{_rec_sat}** 부근으로 낮춰보세요.")
-    elif np.mean(_mask) > 0.65:
-        tips.append(f"채도 임계값({sat_thresh})이 낮아 배경까지 잡힙니다. **{_rec_sat}** 부근으로 높여보세요.")
+    # 채도 분리 및 임계값 진단
+    if _nums == 0 or np.mean(_final_mask) < 0.005:
+        tips.append(f"**[검출 부족]** 채도 임계값(`{sat_thresh}`)이 너무 높아 객체가 사라졌습니다. **{_rec_sat}** 부근으로 낮춰보세요.")
+    elif np.mean(_final_mask) > 0.60 or abs(sat_thresh - _rec_sat) >= 25:
+        tips.append(f"**[임계값 보정 필요]** 현재 채도 기준(`{sat_thresh}`)과 최적 분리 기준(**{_rec_sat}**)의 차이가 큽니다. 임계값을 조정하면 경계가 더 깔끔해집니다.")
+    else:
+        tips.append(f"**[채도 분리 양호]** 전경과 배경의 채도 차이가 `{_sat_gap:.1f}`로 뚜렷하며 임계값(`{sat_thresh}`)도 적절합니다.")
 
+    # 객체 자체 밝기 진단
+    if _fg_lum < 65:
+        tips.append(f"**[객체 어두움]** 검출 영역의 평균 밝기(`{_fg_lum:.0f}`)가 낮아 채도 표현이 줄어들었습니다. 밝기를 **{_rec_bright:.1f}**로 높여보세요.")
+    elif _fg_lum > 225 and _fg_sat < 60:
+        tips.append(f"**[색상 날아감]** 객체 영역이 과노출(`{_fg_lum:.0f}`)되어 채도가 빠졌습니다. 밝기를 **{_rec_bright:.1f}**로 낮춰보세요.")
+
+    # 노이즈 및 미세 파편 진단
     if noise_level > 0 and blur_sigma == 0 and morph_size == 1:
-        tips.append(f"노이즈가 있습니다. 블러(**{_rec_blur:.1f}**)나 모폴로지 커널(**{_rec_morph}**)을 적용해 보세요.")
+        tips.append(f"**[노이즈 미보정]** 노이즈(`{noise_level}`)가 추가되었으나 필터가 꺼져 있습니다. 블러 **{_rec_blur:.1f}**, 모폴로지 커널 **{_rec_morph}**을 적용해 보세요.")
+    elif _noise_dots >= 3:
+        tips.append(f"**[미세 노이즈 잔존]** 35픽셀 미만의 작은 점 **{_noise_dots}개**가 개수에 포함되었습니다. `최소 객체 픽셀 수`를 **{_rec_min_area}** 이상으로 올리세요.")
 
-    if not tips:
-        tips.append("현재 밝기, 채도, 노이즈 설정이 균형 있게 잘 잡혀 있습니다.")
+    # 객체 뭉침 및 내부 구멍 진단
+    if _merged_cnt > 0:
+        tips.append(f"**[객체 뭉침 감지]** 평균 크기보다 3배 이상 큰 덩어리가 **{_merged_cnt}개** 있습니다. 붙어 있는 객체가 합쳐졌을 가능성이 크므로 채도 임계값을 높이거나 모폴로지 커널을 키워보세요.")
+    if _hole_ratio > 0.08:
+        tips.append(f"**[객체 내부 구멍]** 객체 안쪽이 비어 있는 비율이 `{_hole_ratio*100:.1f}%`입니다. 가우시안 블러(`0.5~1.0`)를 살짝 주면 내부가 메워집니다.")
 
     for tip in tips:
-        st.write(f"- {tip}")
+        st.markdown(f"- {tip}")
+
