@@ -105,13 +105,6 @@ def detect_and_count_objects(pil_image, obj_brightness="bright", min_area_ratio=
 
     return len(valid_labels), filtered_label
 
-# --- 3. 사이드바 UI (입력 및 설정 전담) ---
-with st.sidebar:
-    st.header("📁 이미지 입력")
-    uploaded_file = st.file_uploader(
-        "이미지를 입력해주세요",
-        type=["tif", "tiff", "png", "jpg", "jpeg"]
-    )
 
     st.divider()
     st.header("⚙️ 검출 옵션 설정")
