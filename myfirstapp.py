@@ -33,7 +33,7 @@ my_upload = st.sidebar.file_uploader("Upload", type=["png","jpg","jpeg"])
 if my_upload is not None:
     process_image(upload=my_upload)
 else:
-    process_image("./IMG_9642.PNG")
+    process_image("")
 
 f = Image.open('myimg.jpg').convert('L')
 f = np.array(f)
