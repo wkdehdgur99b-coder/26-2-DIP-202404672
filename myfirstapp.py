@@ -19,12 +19,9 @@ def process_image(upload):
     col3.write("Output 2: histeq")
     col3.image(output)
     col4.write("Output 3:saturation")
-    img_array = np.array(image)
-    hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
-    s_channel = hsv[:, :, 1]
-    blurred = cv2.medianBlur(s-channel, 5)
-    _,output = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    output = np.max(np.array(output))-np.array(output)
+    hsv_image = image.convert("HSV")
+    s_channel = np.array(hsv_image)[:, :, 1]
+    output = np.where(s_channel > 50, 255, 0).astype(np.uint8)
     col14.image(output)
 
 col1, col2, col3, col4 = st.columns(4)
