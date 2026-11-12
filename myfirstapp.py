@@ -22,7 +22,7 @@ def process_image(upload):
     hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
     s_channel = hsv[:, :, 1]
     blurred = cv2.medianBlur(s-channel, 5)
-    -,output = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    _,output = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     output = np.max(np.array(output))-np.array(output)
     col14.image(output)
 
